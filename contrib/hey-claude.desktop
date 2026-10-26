@@ -1,0 +1,11 @@
+[Desktop Entry]
+# XDG autostart (works with OpenRC or systemd, KDE, GNOME, XFCE, and compositors
+# that run autostart entries):  cp contrib/hey-claude.desktop ~/.config/autostart/
+Type=Application
+Name=Hey Claude
+Comment=Voice-activated launcher for Claude Code
+Exec=hey-claude run
+Icon=audio-input-microphone
+Terminal=false
+Categories=Utility;Development;
+X-GNOME-Autostart-enabled=true

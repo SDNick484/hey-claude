@@ -1,0 +1,20 @@
+// Waybar module: add "custom/hey-claude" to modules-left/right, then merge this block.
+// Click toggles the wake word; right-click cancels; middle-click opens a bare session.
+{
+  "custom/hey-claude": {
+    "exec": "hey-claude status --waybar --watch",
+    "return-type": "json",
+    "restart-interval": 5,
+    "on-click": "hey-claude toggle-mute",
+    "on-click-right": "hey-claude cancel",
+    "on-click-middle": "hey-claude launch"
+  }
+}
+
+/* style.css
+#custom-hey-claude.listening,
+#custom-hey-claude.followup { color: #d97757; }
+#custom-hey-claude.thinking  { color: #e5c07b; }
+#custom-hey-claude.muted,
+#custom-hey-claude.stopped   { opacity: 0.5; }
+*/
