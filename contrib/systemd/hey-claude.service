@@ -1,0 +1,17 @@
+# systemd user unit (systemd profile only).
+#   install -Dm644 contrib/systemd/hey-claude.service ~/.config/systemd/user/hey-claude.service
+#   systemctl --user daemon-reload && systemctl --user enable --now hey-claude
+# Your compositor must export WAYLAND_DISPLAY/DISPLAY to the user manager, e.g. in sway:
+#   exec systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP
+[Unit]
+Description=Hey Claude voice launcher for Claude Code
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service wireplumber.service
+
+[Service]
+ExecStart=%h/.local/bin/hey-claude run
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

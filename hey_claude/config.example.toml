@@ -1,0 +1,45 @@
+# hey-claude configuration (~/.config/hey-claude/config.toml)
+# Every key is optional; the values shown are the defaults unless noted.
+
+[wake]
+enabled = true                 # false = push-to-talk only (same as starting muted)
+phrases = ["hey claude"]       # add variants your accent produces, e.g. "hi claude"
+threshold = 0.25               # lower = more sensitive; `hey-claude calibrate` sets this
+boost = 1.5
+followup_seconds = 3.0         # after a bare "Hey Claude", wait this long for a prompt
+end_silence = 0.8              # pause that ends what you're saying
+preroll_seconds = 2.5
+max_utterance_seconds = 30.0
+
+[ptt]
+backend = "auto"               # auto | evdev | none  (evdev needs the `input` group)
+key = "KEY_RIGHTALT"           # evdev key name; KEY_RIGHTCTRL if you use AltGr
+cancel_key = "KEY_ESC"
+
+[audio]
+device = ""                    # name substring or index from `hey-claude devices`
+chimes = true
+chime_volume = 0.25
+
+[asr]
+threads = 4
+
+[launch]
+mode = "terminal"              # terminal | tmux | command
+terminal = "auto"              # kitty, foot, alacritty, wezterm, ghostty, konsole, ...
+workdir = "~"
+claude = "claude"
+claude_args = []               # e.g. ["--model", "opus"]
+tmux_session = "hey-claude"    # mode = "tmux": one session per project, prompts typed in
+# focus_command = ["swaymsg", "[app_id=hey-claude] focus"]
+# mode = "command" runs this argv; placeholders {claude} {workdir} {prompt}
+# command = ["code", "{workdir}"]
+
+[notify]
+enabled = true
+on_listen = false
+
+# "Hey Claude, in <name>, ..." opens Claude Code in that directory.
+[projects]
+# "hey claude" = "~/src/hey-claude"
+# "dotfiles" = "~/.dotfiles"
