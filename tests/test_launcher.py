@@ -61,6 +61,29 @@ def test_command_mode_template(tmp_path):
     assert l.launch(Request("")).commands == [["code", str(tmp_path)]]
 
 
+def test_browser_mode_encodes_prompt_into_url():
+    out = Launcher(LaunchConfig(mode="browser"), {}, dry_run=True).launch(Request("is 2 + 2 = 4? a&b, naïve"))
+    assert out.commands == [["xdg-open", "https://claude.ai/new?q=is%202%20%2B%202%20%3D%204%3F%20a%26b%2C%20na%C3%AFve"]]
+    assert out.summary == "Opened claude.ai"
+
+
+def test_browser_mode_bare_launch_opens_blank_chat():
+    out = Launcher(LaunchConfig(mode="browser"), {}, dry_run=True).launch(Request(""))
+    assert out.commands == [["xdg-open", "https://claude.ai/new"]]
+
+
+def test_browser_mode_uses_configured_url():
+    cfg = LaunchConfig(mode="browser", url="https://example.com/ask/{prompt}/now")
+    out = Launcher(cfg, {}, dry_run=True).launch(Request("a/b"))
+    assert out.commands == [["xdg-open", "https://example.com/ask/a%2Fb/now"]]
+
+
+def test_browser_mode_needs_only_xdg_open():
+    cfg = LaunchConfig(mode="browser")
+    assert Launcher(cfg, {}, which=which_only("xdg-open")).problems() == []
+    assert Launcher(cfg, {}, which=which_only("claude", "xterm")).problems() == ["xdg-open is not installed"]
+
+
 class FakeTmux:
     def __init__(self, exists: bool, attached: bool):
         self.exists, self.attached = exists, attached

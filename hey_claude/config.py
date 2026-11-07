@@ -96,6 +96,7 @@ class LaunchConfig:
     # terminal: new terminal window per launch
     # tmux:     one persistent tmux session; later prompts are typed into it
     # command:  run `command` (argv template) yourself
+    # browser:  open `url` in the default browser, prompt pre-filled but not sent
     mode: str = "terminal"
     terminal: str = "auto"
     workdir: str = "~"
@@ -104,6 +105,8 @@ class LaunchConfig:
     tmux_session: str = "hey-claude"
     # argv template for mode = "command"; placeholders: {claude} {workdir} {prompt}
     command: list[str] = field(default_factory=list)
+    # URL template for mode = "browser"; {prompt} is URL-encoded.
+    url: str = "https://claude.ai/new?q={prompt}"
     # Optional argv run after a prompt is sent to an already-attached tmux session,
     # e.g. ["swaymsg", "[app_id=hey-claude] focus"].
     focus_command: list[str] = field(default_factory=list)

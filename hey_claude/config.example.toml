@@ -13,7 +13,7 @@ max_utterance_seconds = 30.0
 
 [ptt]
 backend = "auto"               # auto | evdev | none  (evdev needs the `input` group)
-key = "KEY_RIGHTALT"           # evdev key name; KEY_RIGHTCTRL if you use AltGr
+key = "KEY_RIGHTALT"           # evdev key name; KEY_RIGHTCTRL if you use AltGr, KEY_F23 for a Copilot key
 cancel_key = "KEY_ESC"
 
 [audio]
@@ -25,7 +25,7 @@ chime_volume = 0.25
 threads = 4
 
 [launch]
-mode = "terminal"              # terminal | tmux | command
+mode = "terminal"              # terminal | tmux | command | browser
 terminal = "auto"              # kitty, foot, alacritty, wezterm, ghostty, konsole, ...
 workdir = "~"
 claude = "claude"
@@ -34,6 +34,8 @@ tmux_session = "hey-claude"    # mode = "tmux": one session per project, prompts
 # focus_command = ["swaymsg", "[app_id=hey-claude] focus"]
 # mode = "command" runs this argv; placeholders {claude} {workdir} {prompt}
 # command = ["code", "{workdir}"]
+# mode = "browser" opens this URL with xdg-open, prompt pre-filled but not sent
+# url = "https://claude.ai/new?q={prompt}"
 
 [notify]
 enabled = true

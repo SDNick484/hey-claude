@@ -1,4 +1,4 @@
-"""Start (or reuse) a Claude Code session in a terminal or tmux."""
+"""Start (or reuse) a Claude Code session in a terminal or tmux, or open claude.ai in a browser."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote
 
 from hey_claude import config as cfgmod
 from hey_claude.config import LaunchConfig
@@ -124,8 +125,11 @@ class Launcher:
             summary = self._launch_tmux(request, wd)
         elif mode == "command":
             summary = self._launch_command(request, wd)
+        elif mode == "browser":
+            # A web chat has no working directory, so the summary doesn't name one.
+            return Outcome(summary=self._launch_browser(request, wd), workdir=wd, commands=self._commands)
         else:
-            raise RuntimeError(f"unknown [launch] mode {mode!r} (terminal, tmux or command)")
+            raise RuntimeError(f"unknown [launch] mode {mode!r} (terminal, tmux, command or browser)")
         return Outcome(summary=f"{summary} in {where}", workdir=wd, commands=self._commands)
 
     # -- modes -------------------------------------------------------------------
@@ -145,6 +149,15 @@ class Launcher:
             argv.append(part.format(**values))
         self._start(argv, wd)
         return "Launched"
+
+    def _launch_browser(self, request: Request, wd: str) -> str:
+        url = self.cfg.url
+        if request.prompt:
+            url = url.replace("{prompt}", quote(request.prompt, safe=""))
+        else:
+            url = url.partition("?")[0]  # no prompt: drop the query for a blank page
+        self._start(["xdg-open", url], wd)
+        return "Opened claude.ai"
 
     def _launch_tmux(self, request: Request, wd: str) -> str:
         session = self.cfg.tmux_session
@@ -180,6 +193,8 @@ class Launcher:
 
     def problems(self) -> list[str]:
         """Things that will make launching fail, for `hey-claude doctor`."""
+        if self.cfg.mode == "browser":
+            return [] if self.which("xdg-open") else ["xdg-open is not installed"]
         out = []
         if not self.which(self.cfg.claude):
             out.append(f"`{self.cfg.claude}` (Claude Code CLI) is not on PATH")
