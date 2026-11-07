@@ -24,7 +24,7 @@ mic ─▶ wake word (KWS zipformer) ─▶ VAD end-of-speech ─▶ Parakeet ST
 | **Follow-up** | Say "Hey Claude", pause, then speak: you get up to 3 s to start talking. Silence opens an empty session. |
 | **Projects** | "Hey Claude, *in dotfiles,* clean up my zshrc" opens in `~/.dotfiles` (see `[projects]`). |
 | **Push-to-talk** | Hold Right Alt (evdev), or bind `hey-claude ptt start/stop` in sway or Hyprland. Pauses never cut you off. Esc (evdev) or `hey-claude cancel` aborts. |
-| **Launch targets** | A new terminal per launch (kitty, foot, alacritty, wezterm, ghostty, konsole, gnome-terminal, xfce4-terminal, urxvt, st, xterm), **or** one persistent **tmux** session per project that later prompts are typed into, **or** any command you like. |
+| **Launch targets** | A new terminal per launch (kitty, foot, alacritty, wezterm, ghostty, konsole, gnome-terminal, xfce4-terminal, urxvt, st, xterm), **or** one persistent **tmux** session per project that later prompts are typed into, **or** a pre-filled claude.ai chat in your browser, **or** any command you like. |
 | **Status** | Earcons, `notify-send` notifications, a live Waybar module, `hey-claude status`. |
 | **Tuning** | `hey-claude calibrate` records your voice and picks the wake threshold for your accent and mic. |
 | **History** | `hey-claude history` lists recent launches. |
@@ -76,6 +76,22 @@ the configured key codes and records nothing, but if you'd rather not grant this
 Right Alt is AltGr on many international layouts. If you use AltGr, set `key = "KEY_RIGHTCTRL"`
 or another key.
 
+On a laptop with a Copilot key, set `key = "KEY_F23"`. The key sends Left Meta + Left Shift + F23,
+and hold-to-talk needs it to stay down until you let go. Confirm yours does with
+`evtest`, because some firmware sends the release immediately.
+
+### Wake word, push-to-talk or both
+
+Both are on by default. To use only one:
+
+```toml
+[wake]
+enabled = false    # push-to-talk only
+
+[ptt]
+backend = "none"   # wake word only
+```
+
 ## Configuration
 
 `hey-claude config --init` writes a commented `~/.config/hey-claude/config.toml`
@@ -99,6 +115,12 @@ phrases = ["hey claude", "hi claude"]   # add variants your accent produces
 
 `mode = "command"` runs any argv template instead, with the placeholders `{claude}`,
 `{workdir}` and `{prompt}`. For example, to open VS Code: `command = ["code", "{workdir}"]`.
+
+`mode = "browser"` opens a new claude.ai chat in your default browser (via `xdg-open`) with what
+you said typed into the box but not sent, so you can check it first. Saying "Hey Claude" alone
+opens a blank chat. The Claude Code CLI isn't needed in this mode, and project routing doesn't
+apply. To open somewhere else, set `url`, where `{prompt}` is URL-encoded:
+`url = "https://claude.ai/new?q={prompt}"`.
 
 ## Commands
 

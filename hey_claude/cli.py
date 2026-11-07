@@ -78,7 +78,7 @@ def cmd_doctor(args) -> int:
     problems = launcher.problems()
     line(not problems, f"launch mode {cfg.launch.mode!r}"
          + (f", terminal {cfg.launch.terminal if cfg.launch.terminal != 'auto' else detect_terminal()}"
-            if cfg.launch.mode != "command" else ""), "; ".join(problems))
+            if cfg.launch.mode in ("terminal", "tmux") else ""), "; ".join(problems))
     for name, path in cfg.projects.items():
         line(config.expand(path).is_dir(), f"project {name!r} -> {path}")
     ok, why = hotkey.available()
