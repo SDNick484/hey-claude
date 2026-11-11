@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
+import time
 import wave
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -20,15 +23,53 @@ def _device(spec: str):
     return int(spec) if spec.isdigit() else spec
 
 
-class Microphone:
-    """16 kHz mono float32 frames of FRAME samples, delivered through a queue."""
+class MicrophoneWedged(RuntimeError):
+    """PortAudio did not let go of a dead stream; only a fresh process recovers."""
 
-    def __init__(self, device: str = "") -> None:
+
+_portaudio_opened = False
+
+
+def _open_portaudio(device, callback):
+    import sounddevice as sd
+
+    global _portaudio_opened
+    if _portaudio_opened:
+        # PortAudio enumerates devices once; refresh so a restarted audio server is found.
+        sd._terminate()
+        sd._initialize()
+    _portaudio_opened = True
+    # Ask PortAudio for 16 kHz directly; PipeWire/Pulse resample for us.
+    return sd.InputStream(samplerate=SAMPLE_RATE, blocksize=FRAME, channels=1,
+                          dtype="float32", device=device, callback=callback)
+
+
+class Microphone:
+    """16 kHz mono float32 frames of FRAME samples, delivered through a queue.
+
+    The daemon calls keep_alive() from its loop: it opens the stream, retries with
+    backoff while the audio server is unavailable, and replaces a stream that has
+    gone silent (what PortAudio does when PipeWire restarts underneath it).
+    """
+
+    STALL_SECONDS = 3.0
+    RETRY_MAX = 30.0
+
+    def __init__(self, device: str = "", *, open_stream: Callable = _open_portaudio,
+                 clock: Callable[[], float] = time.monotonic, close_timeout: float = 2.0) -> None:
         self.device = _device(device)
         self.frames: queue.Queue[np.ndarray] = queue.Queue(maxsize=int(60 * SAMPLE_RATE / FRAME))
         self._stream = None
+        self._open_stream = open_stream
+        self._clock = clock
+        self._close_timeout = close_timeout
+        self._opened_at = 0.0
+        self._last_frame: float | None = None
+        self._delay = 0.0
+        self._next_try = 0.0
 
     def _callback(self, indata, _frames, _time, status) -> None:
+        self._last_frame = self._clock()
         if status:
             log.debug("audio status: %s", status)
         try:
@@ -37,19 +78,69 @@ class Microphone:
             # The consumer stalled for a minute; dropping audio beats growing without bound.
             pass
 
+    def _open(self) -> None:
+        self._last_frame = None
+        self._opened_at = self._clock()
+        stream = self._open_stream(self.device, self._callback)
+        try:
+            stream.start()
+        except Exception:
+            stream.close()
+            raise
+        self._stream = stream
+
+    def _close(self) -> bool:
+        """Abort and close the stream; False if PortAudio hung doing so."""
+        stream, self._stream = self._stream, None
+        if stream is None:
+            return True
+
+        def shut() -> None:
+            # abort(), unlike stop(), does not wait for a dead server to drain buffers.
+            for step in (stream.abort, stream.close):
+                try:
+                    step()
+                except Exception as e:
+                    log.debug("closing the microphone: %s", e)
+
+        t = threading.Thread(target=shut, name="mic-close", daemon=True)
+        t.start()
+        t.join(self._close_timeout)
+        return not t.is_alive()
+
+    def _backoff(self, now: float) -> None:
+        self._delay = min(max(self._delay * 2, 1.0), self.RETRY_MAX)
+        self._next_try = now + self._delay
+
     def start(self) -> None:
-        import sounddevice as sd
+        self._open()
 
-        # Ask PortAudio for 16 kHz directly; PipeWire/Pulse resample for us.
-        self._stream = sd.InputStream(samplerate=SAMPLE_RATE, blocksize=FRAME, channels=1,
-                                      dtype="float32", device=self.device, callback=self._callback)
-        self._stream.start()
-
-    def stop(self) -> None:
+    def keep_alive(self) -> None:
+        now = self._clock()
         if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+            heard = self._last_frame
+            if now - (heard if heard is not None else self._opened_at) < self.STALL_SECONDS:
+                if heard is not None:
+                    self._delay = 0.0
+                return
+            log.warning("no audio from the microphone for %.0fs; reopening it", self.STALL_SECONDS)
+            if not self._close():
+                raise MicrophoneWedged("PortAudio hung closing a dead microphone stream")
+            if heard is None:
+                self._backoff(now)  # it never worked; don't spin reopening it
+            else:
+                self._next_try = now
+        if now < self._next_try:
+            return
+        try:
+            self._open()
+        except Exception as e:
+            self._backoff(now)
+            log.warning("cannot open the microphone (%s); retrying in %.0fs", e, self._delay)
+
+    def stop(self) -> bool:
+        """Close the stream; False if PortAudio hung (the caller should not wait on it)."""
+        return self._close()
 
     def read(self, timeout: float = 0.1) -> np.ndarray | None:
         try:

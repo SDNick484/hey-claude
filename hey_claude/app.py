@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import signal
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -172,12 +174,14 @@ class Daemon:
         signal.signal(signal.SIGINT, self.stop)
         self.server.start()
         self._start_hotkeys()
-        self.mic.start()
+        self.mic.keep_alive()
         self._publish()
         phrases = " / ".join(f'"{p}"' for p in self.cfg.wake.phrases)
         log.info("ready: say %s%s", phrases, " (muted)" if self.pipeline.muted else "")
+        wedged = False
         try:
             while self._running:
+                self.mic.keep_alive()
                 while True:
                     try:
                         cmd, done = self.events.get_nowait()
@@ -191,12 +195,22 @@ class Daemon:
                 frame = self.mic.read(timeout=0.05)
                 if frame is not None:
                     self.pipeline.process(frame)
+        except audio.MicrophoneWedged as e:
+            log.error("%s; restarting", e)
+            wedged = True
         finally:
-            self.mic.stop()
+            released = self.mic.stop()
             self.server.stop()
             if self.hotkeys:
                 self.hotkeys.stop()
             feedback.write_status("stopped", self.pipeline.muted)
+        if wedged:
+            # The hung PortAudio thread can't be recovered in-process; exec drops it.
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+        if not released:
+            # Interpreter shutdown would block in Pa_Terminate on the hung stream.
+            log.warning("microphone did not close; exiting without waiting for it")
+            os._exit(0)
 
 
 def simulate(cfg: Config, samples: np.ndarray, *, ptt: list[tuple[float, float]] | None = None) -> list[tuple[float, Launch, list[list[str]]]]:
