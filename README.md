@@ -1,8 +1,9 @@
 # hey-claude
 
 A voice-activated launcher for [Claude Code](https://docs.claude.com/en/docs/claude-code) on Linux.
-Say **"Hey Claude"** and a Claude Code session opens. Keep talking (*"Hey Claude, summarize the
-last five commits"*) and what you said becomes the opening prompt. Or hold a key to talk.
+Hold the Copilot key, say what you want (*"summarize the last five commits"*), let go, and a
+Claude Code session opens with that as its opening prompt. Turn on the wake word and you can say
+**"Hey Claude"** instead.
 
 Inspired by [littlemelon77/hey-claude](https://github.com/littlemelon77/hey-claude) for macOS. It
 uses the same on-device speech stack (sherpa-onnx with a zipformer keyword spotter, Silero VAD and
@@ -19,11 +20,11 @@ mic ─▶ wake word (KWS zipformer) ─▶ VAD end-of-speech ─▶ Parakeet ST
 
 | | |
 |---|---|
-| **Wake word** | "Hey Claude" opens a session. Pre-roll audio is kept, so you can run straight on into the prompt without pausing. |
+| **Push-to-talk** | Hold the Copilot key (evdev), or bind `hey-claude ptt start/stop` in sway or Hyprland. The microphone stays closed until you press it. Pauses never cut you off. Esc (evdev) or `hey-claude cancel` aborts. |
+| **Wake word** (opt-in) | "Hey Claude" opens a session. Pre-roll audio is kept, so you can run straight on into the prompt without pausing. |
 | **Prompt passthrough** | "Hey Claude, *why is CI red?*" starts `claude "why is CI red?"`. |
 | **Follow-up** | Say "Hey Claude", pause, then speak: you get up to 3 s to start talking. Silence opens an empty session. |
 | **Projects** | "Hey Claude, *in dotfiles,* clean up my zshrc" opens in `~/.dotfiles` (see `[projects]`). |
-| **Push-to-talk** | Hold Right Alt (evdev), or bind `hey-claude ptt start/stop` in sway or Hyprland. Pauses never cut you off. Esc (evdev) or `hey-claude cancel` aborts. |
 | **Launch targets** | A new terminal per launch (kitty, foot, alacritty, wezterm, ghostty, konsole, gnome-terminal, xfce4-terminal, urxvt, st, xterm), **or** one persistent **tmux** session per project that later prompts are typed into, **or** a pre-filled claude.ai chat in your browser, **or** any command you like. |
 | **Status** | Earcons, `notify-send` notifications, a live Waybar module, `hey-claude status`. |
 | **Tuning** | `hey-claude calibrate` records your voice and picks the wake threshold for your accent and mic. |
@@ -52,7 +53,7 @@ pipx inject hey-claude evdev        # optional: global push-to-talk via /dev/inp
 
 hey-claude setup       # downloads ~500 MB of models to ~/.local/share/hey-claude/models
 hey-claude doctor      # checks mic, models, terminal, claude, push-to-talk
-hey-claude calibrate   # ~1 min: say "Hey Claude" 5x, then read a paragraph aloud
+hey-claude calibrate   # only for the wake word: say "Hey Claude" 5x, then read a paragraph
 hey-claude run         # foreground; Ctrl-C to stop
 ```
 
@@ -73,24 +74,26 @@ the configured key codes and records nothing, but if you'd rather not grant this
 `[ptt] backend = "none"` and use compositor bindings instead. See
 [contrib/bindings.md](contrib/bindings.md) for sway, i3, Hyprland, KDE and GNOME.
 
-Right Alt is AltGr on many international layouts. If you use AltGr, set `key = "KEY_RIGHTCTRL"`
-or another key.
+The default key is the Copilot key (`KEY_F23`). It sends Left Meta + Left Shift + F23, and
+hold-to-talk needs it to stay down until you let go. Confirm yours does with `evtest`, because
+some firmware sends the release immediately. Without a Copilot key, pick another, e.g.
+`key = "KEY_RIGHTALT"` (that's AltGr on many international layouts; `KEY_RIGHTCTRL` then).
 
-On a laptop with a Copilot key, set `key = "KEY_F23"`. The key sends Left Meta + Left Shift + F23,
-and hold-to-talk needs it to stay down until you let go. Confirm yours does with
-`evtest`, because some firmware sends the release immediately.
+### Push-to-talk, wake word or both
 
-### Wake word, push-to-talk or both
-
-Both are on by default. To use only one:
+Push-to-talk alone is the default. hey-claude then keeps the microphone closed and runs no speech
+models until you hold the key, so it uses next to no CPU while idle. The wake word needs the
+microphone open and the keyword spotter and voice detector running all the time. To turn it on:
 
 ```toml
 [wake]
-enabled = false    # push-to-talk only
+enabled = true     # push-to-talk and the wake word
 
 [ptt]
-backend = "none"   # wake word only
+backend = "none"   # add this for the wake word only
 ```
+
+`hey-claude unmute` / `mute` / `toggle-mute` switch the wake word on and off while it's running.
 
 ## Configuration
 
@@ -128,7 +131,7 @@ apply. To open somewhere else, set `url`, where `{prompt}` is URL-encoded:
 |---|---|
 | `hey-claude run [--dry-run]` | Run the listener (`--dry-run` logs launches instead of running them). |
 | `hey-claude setup` / `doctor` / `calibrate [--reuse]` | Models, health check, wake-word tuning. |
-| `hey-claude mute` / `unmute` / `toggle-mute` / `cancel` | Control a running instance (mute turns off the wake word; push-to-talk still works). |
+| `hey-claude mute` / `unmute` / `toggle-mute` / `cancel` | Control a running instance (unmute turns on the wake word, mute turns it off and closes the microphone; push-to-talk works either way). |
 | `hey-claude ptt start\|stop\|toggle` | Push-to-talk, for key bindings. |
 | `hey-claude status [--json\|--waybar] [--watch]` | Current state; `--watch` streams changes (see [contrib/waybar.jsonc](contrib/waybar.jsonc)). |
 | `hey-claude launch [--dry-run] [-p PROJECT] [PROMPT…]` | Test the launcher without speaking. |

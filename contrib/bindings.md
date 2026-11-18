@@ -2,7 +2,7 @@
 
 Two ways to do push-to-talk:
 
-1. **evdev** (default when available): hold Right Alt anywhere, X11 or Wayland.
+1. **evdev** (default when available): hold the Copilot key (`KEY_F23`) anywhere, X11 or Wayland.
    Needs read access to `/dev/input` (`gpasswd -a $USER input`, then log in again).
    That group can read *every* keyboard; hey-claude only acts on the configured
    keys, but if you'd rather not grant it, set `[ptt] backend = "none"` and use (2).
