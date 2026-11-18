@@ -126,14 +126,19 @@ class Pipeline:
     def set_muted(self, muted: bool) -> None:
         self.muted = muted
         if self.state in (State.IDLE, State.MUTED):
+            # The daemon closes the microphone while muted, so this audio goes stale.
+            self._preroll.clear()
             self._set(self._rest_state())
         if not muted:
             self.spotter.reset()
+            self.vad.reset()
 
     def ptt_start(self) -> None:
         if self.ptt_active:
             return
         self._followup = False
+        # Push-to-talk ends on release, so the VAD skips it; start it afresh afterwards.
+        self.vad.reset()
         # A little pre-roll catches the first syllable if speech began with the keypress.
         self._begin(Source.PTT, preroll_frames=max(1, self._secs(0.25) // FRAME))
         self._ptt_started = self.samples
@@ -156,7 +161,7 @@ class Pipeline:
 
     def process(self, frame: np.ndarray) -> None:
         self.samples += len(frame)
-        speaking = self.vad.accept(frame)
+        speaking = False if self.ptt_active else self.vad.accept(frame)
         # The spotter hears every frame (it is tiny) so its streaming context stays
         # continuous; restarting it mid-speech makes the next detection less reliable.
         # Hits outside IDLE are ignored.

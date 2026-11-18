@@ -81,8 +81,12 @@ def cmd_doctor(args) -> int:
             if cfg.launch.mode in ("terminal", "tmux") else ""), "; ".join(problems))
     for name, path in cfg.projects.items():
         line(config.expand(path).is_dir(), f"project {name!r} -> {path}")
+    line(True, "wake word on (microphone always open)" if cfg.wake.enabled
+         else "wake word off (microphone opens only for push-to-talk)")
     ok, why = hotkey.available()
-    line(ok if cfg.ptt.backend == "evdev" else (True if ok else None),
+    # With the wake word off, a missing key under "auto" leaves nothing to start a capture.
+    needed = cfg.ptt.backend == "evdev" or (cfg.ptt.backend == "auto" and not cfg.wake.enabled)
+    line(ok if needed else (True if ok else None),
          f"push-to-talk ({cfg.ptt.backend}, {cfg.ptt.key})" if ok else "push-to-talk via evdev",
          why + ("; or bind `hey-claude ptt start/stop` in your compositor" if why else ""))
     line(True if shutil.which("notify-send") else None, "notify-send",

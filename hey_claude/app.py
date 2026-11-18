@@ -157,7 +157,12 @@ class Daemon:
             msg = f"push-to-talk via evdev unavailable: {why}"
             if backend == "evdev":
                 raise SystemExit(msg)
-            log.info("%s; bind `hey-claude ptt start` / `ptt stop` in your compositor instead", msg)
+            hint = "bind `hey-claude ptt start` / `ptt stop` in your compositor instead"
+            if self.pipeline.muted:
+                # Wake word off and no key: nothing triggers a launch without those bindings.
+                log.warning("%s; the wake word is off too, so %s (or set [wake] enabled = true)", msg, hint)
+            else:
+                log.info("%s; %s", msg, hint)
             return
         self.hotkeys = hotkey.HotkeyListener(
             self.cfg.ptt.key, self.cfg.ptt.cancel_key,
@@ -165,6 +170,42 @@ class Daemon:
             on_release=lambda: self.events.put(("ptt-stop", None)),
             on_cancel=lambda: self.events.put(("cancel", None)))
         self.hotkeys.start()
+
+    def _apply_events(self, timeout: float) -> None:
+        """Handle queued commands, waiting up to `timeout` for the first one."""
+        try:
+            cmd, done = self.events.get(timeout=timeout) if timeout else self.events.get_nowait()
+        except queue.Empty:
+            return
+        while True:
+            try:
+                self._handle(cmd)
+            finally:
+                if done:
+                    done.set()
+            try:
+                cmd, done = self.events.get_nowait()
+            except queue.Empty:
+                return
+
+    def _needs_mic(self) -> bool:
+        # MUTED means the wake word is off and nothing is being captured.
+        return self.pipeline.state != State.MUTED
+
+    def _tick(self) -> None:
+        if not self._needs_mic():
+            # Idle with the wake word off: release the microphone and run no models,
+            # just wait for push-to-talk or another command. stop() also clears any
+            # retry backoff, so a failed attempt never delays the next keypress.
+            if not self.mic.stop():
+                raise audio.MicrophoneWedged("PortAudio hung closing the microphone")
+            self._apply_events(timeout=0.5)
+            return
+        self.mic.keep_alive()
+        self._apply_events(timeout=0)
+        frame = self.mic.read(timeout=0.05)
+        if frame is not None:
+            self.pipeline.process(frame)
 
     def stop(self, *_args) -> None:
         self._running = False
@@ -174,27 +215,16 @@ class Daemon:
         signal.signal(signal.SIGINT, self.stop)
         self.server.start()
         self._start_hotkeys()
-        self.mic.keep_alive()
         self._publish()
-        phrases = " / ".join(f'"{p}"' for p in self.cfg.wake.phrases)
-        log.info("ready: say %s%s", phrases, " (muted)" if self.pipeline.muted else "")
+        if self.pipeline.muted:
+            log.info("ready: hold %s to talk (wake word off, microphone closed until then)",
+                     self.cfg.ptt.key if self.hotkeys else "your push-to-talk binding")
+        else:
+            log.info("ready: say %s", " / ".join(f'"{p}"' for p in self.cfg.wake.phrases))
         wedged = False
         try:
             while self._running:
-                self.mic.keep_alive()
-                while True:
-                    try:
-                        cmd, done = self.events.get_nowait()
-                    except queue.Empty:
-                        break
-                    try:
-                        self._handle(cmd)
-                    finally:
-                        if done:
-                            done.set()
-                frame = self.mic.read(timeout=0.05)
-                if frame is not None:
-                    self.pipeline.process(frame)
+                self._tick()
         except audio.MicrophoneWedged as e:
             log.error("%s; restarting", e)
             wedged = True

@@ -27,18 +27,14 @@ class MicrophoneWedged(RuntimeError):
     """PortAudio did not let go of a dead stream; only a fresh process recovers."""
 
 
-_portaudio_opened = False
-
-
-def _open_portaudio(device, callback):
+def _open_portaudio(device, callback, *, refresh: bool = False):
     import sounddevice as sd
 
-    global _portaudio_opened
-    if _portaudio_opened:
+    if refresh:
         # PortAudio enumerates devices once; refresh so a restarted audio server is found.
+        # Skipped otherwise: re-enumerating slows the open that push-to-talk waits on.
         sd._terminate()
         sd._initialize()
-    _portaudio_opened = True
     # Ask PortAudio for 16 kHz directly; PipeWire/Pulse resample for us.
     return sd.InputStream(samplerate=SAMPLE_RATE, blocksize=FRAME, channels=1,
                           dtype="float32", device=device, callback=callback)
@@ -47,9 +43,10 @@ def _open_portaudio(device, callback):
 class Microphone:
     """16 kHz mono float32 frames of FRAME samples, delivered through a queue.
 
-    The daemon calls keep_alive() from its loop: it opens the stream, retries with
-    backoff while the audio server is unavailable, and replaces a stream that has
-    gone silent (what PortAudio does when PipeWire restarts underneath it).
+    The daemon calls keep_alive() from its loop while it wants audio: it opens the
+    stream, retries with backoff while the audio server is unavailable, and replaces
+    a stream that has gone silent (what PortAudio does when PipeWire restarts
+    underneath it). It calls stop() to release the microphone while idle.
     """
 
     STALL_SECONDS = 3.0
@@ -67,6 +64,11 @@ class Microphone:
         self._last_frame: float | None = None
         self._delay = 0.0
         self._next_try = 0.0
+        self._refresh = False  # re-enumerate devices on the next open
+
+    @property
+    def is_open(self) -> bool:
+        return self._stream is not None
 
     def _callback(self, indata, _frames, _time, status) -> None:
         self._last_frame = self._clock()
@@ -81,12 +83,19 @@ class Microphone:
     def _open(self) -> None:
         self._last_frame = None
         self._opened_at = self._clock()
-        stream = self._open_stream(self.device, self._callback)
+        try:
+            stream = self._open_stream(self.device, self._callback, refresh=self._refresh)
+        except Exception:
+            self._refresh = True
+            raise
         try:
             stream.start()
         except Exception:
+            self._refresh = True
             stream.close()
             raise
+        log.debug("microphone open in %.0f ms", (self._clock() - self._opened_at) * 1000)
+        self._refresh = False
         self._stream = stream
 
     def _close(self) -> bool:
@@ -124,6 +133,7 @@ class Microphone:
                     self._delay = 0.0
                 return
             log.warning("no audio from the microphone for %.0fs; reopening it", self.STALL_SECONDS)
+            self._refresh = True
             if not self._close():
                 raise MicrophoneWedged("PortAudio hung closing a dead microphone stream")
             if heard is None:
@@ -139,8 +149,14 @@ class Microphone:
             log.warning("cannot open the microphone (%s); retrying in %.0fs", e, self._delay)
 
     def stop(self) -> bool:
-        """Close the stream; False if PortAudio hung (the caller should not wait on it)."""
-        return self._close()
+        """Close the stream; False if PortAudio hung (the caller should not wait on it).
+
+        The next keep_alive() reopens it straight away, without waiting out a backoff.
+        """
+        closed = self._close()
+        self._next_try = 0.0
+        self.drain()
+        return closed
 
     def read(self, timeout: float = 0.1) -> np.ndarray | None:
         try:

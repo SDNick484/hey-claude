@@ -43,8 +43,10 @@ class Opener:
         self.down = down
         self.hang_on_close = hang_on_close
         self.streams: list[FakeStream] = []
+        self.refreshes: list[bool] = []
 
-    def __call__(self, device, callback) -> FakeStream:
+    def __call__(self, device, callback, *, refresh: bool = False) -> FakeStream:
+        self.refreshes.append(refresh)
         if self.down:
             raise RuntimeError("Error opening InputStream: Unanticipated host error")
         stream = FakeStream(callback, hang_on_close=self.hang_on_close)
@@ -88,9 +90,9 @@ def test_backoff_grows_while_the_server_stays_down():
     attempts = []
     real_call = opener.__call__
 
-    def counting(device, callback):
+    def counting(device, callback, **kw):
         attempts.append(clock.t)
-        return real_call(device, callback)
+        return real_call(device, callback, **kw)
 
     mic._open_stream = counting
     while clock.t < 40:
@@ -159,3 +161,48 @@ def test_stop_reports_a_clean_close():
     mic.keep_alive()
     assert mic.stop() is True
     assert opener.streams[0].closed
+
+
+def test_stop_releases_the_microphone_and_drops_queued_audio():
+    opener, clock = Opener(), Clock()
+    mic = mic_with(opener, clock)
+    mic.keep_alive()
+    opener.streams[0].deliver()
+    assert mic.stop() is True
+    assert not mic.is_open and mic.read(timeout=0) is None
+
+
+def test_reopening_after_stop_is_immediate_and_skips_the_device_rescan():
+    # Push-to-talk opens the microphone on the keypress; re-enumerating devices
+    # would only slow that down when nothing went wrong.
+    opener, clock = Opener(down=True), Clock()
+    mic = mic_with(opener, clock)
+    mic.keep_alive()  # fails: backoff armed, rescan requested
+    opener.down = False
+    clock.t = 1.0
+    mic.keep_alive()
+    assert opener.refreshes == [False, True]
+    assert mic.stop() is True
+
+    mic.keep_alive()
+    assert mic.is_open and opener.refreshes[-1] is False
+
+
+def test_stop_cancels_a_pending_backoff():
+    opener, clock = Opener(down=True), Clock()
+    mic = mic_with(opener, clock)
+    mic.keep_alive()
+    mic.stop()
+    opener.down = False
+    mic.keep_alive()
+    assert mic.is_open
+
+
+def test_a_silent_stream_is_reopened_with_a_device_rescan():
+    opener, clock = Opener(), Clock()
+    mic = mic_with(opener, clock)
+    mic.keep_alive()
+    opener.streams[0].deliver()
+    clock.t = Microphone.STALL_SECONDS + 0.5
+    mic.keep_alive()
+    assert opener.refreshes == [False, True]

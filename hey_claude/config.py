@@ -54,7 +54,9 @@ def socket_path() -> Path:
 
 @dataclass
 class WakeConfig:
-    enabled: bool = True
+    # Off by default: push-to-talk keeps the microphone closed until the key is held,
+    # where the wake word needs it open and two models running all the time.
+    enabled: bool = False
     # Each phrase is tokenised with the KWS model's BPE vocabulary at startup.
     phrases: list[str] = field(default_factory=lambda: ["hey claude"])
     # Lower threshold = more sensitive (more false accepts); see `hey-claude calibrate`.
@@ -73,7 +75,7 @@ class WakeConfig:
 class PttConfig:
     # auto: use evdev when /dev/input is readable, otherwise rely on `hey-claude ptt` bindings.
     backend: str = "auto"
-    key: str = "KEY_RIGHTALT"
+    key: str = "KEY_F23"  # the Copilot key
     cancel_key: str = "KEY_ESC"
 
 

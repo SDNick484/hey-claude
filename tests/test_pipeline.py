@@ -1,6 +1,7 @@
 """State machine tests with scripted fake engines (no models, no audio)."""
 
 import numpy as np
+import pytest
 
 from hey_claude.pipeline import Pipeline, Settings, Source, State
 from hey_claude.speech import FRAME, SAMPLE_RATE, Transcript
@@ -43,8 +44,10 @@ class FakeSpotter:
 class FakeVad:
     def __init__(self, script):
         self.s = script
+        self.calls = 0
 
     def accept(self, samples):
+        self.calls += 1
         return self.s.frame in self.s.speech
 
     def reset(self):
@@ -203,3 +206,24 @@ def test_max_utterance_cap():
 def test_wake_disabled_starts_muted():
     pipe, *_ = make(FakeAsr(), wake_enabled=False)
     assert pipe.state == State.MUTED
+
+
+def test_push_to_talk_skips_the_vad():
+    # Release ends push-to-talk, so the VAD's per-frame cost buys nothing there.
+    pipe, *_ = make(FakeAsr("list branches"), wake_enabled=False)
+    pipe.ptt_start()
+    run(pipe, 1.0)
+    pipe.ptt_stop()
+    assert pipe.vad.calls == 0
+
+
+def test_muting_drops_stale_preroll():
+    # The daemon closes the microphone while muted, so old audio must not lead a later capture.
+    asr = FakeAsr("go")
+    pipe, *_ = make(asr)
+    run(pipe, 2.0)
+    pipe.set_muted(True)
+    pipe.ptt_start()
+    run(pipe, 1.0)
+    pipe.ptt_stop()
+    assert asr.calls[0] == pytest.approx(1.0, abs=0.05)

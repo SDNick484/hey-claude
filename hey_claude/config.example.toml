@@ -2,7 +2,7 @@
 # Every key is optional; the values shown are the defaults unless noted.
 
 [wake]
-enabled = true                 # false = push-to-talk only (same as starting muted)
+enabled = false                # true = also listen for "Hey Claude" (mic always open, more CPU)
 phrases = ["hey claude"]       # add variants your accent produces, e.g. "hi claude"
 threshold = 0.25               # lower = more sensitive; `hey-claude calibrate` sets this
 boost = 1.5
@@ -13,7 +13,7 @@ max_utterance_seconds = 30.0
 
 [ptt]
 backend = "auto"               # auto | evdev | none  (evdev needs the `input` group)
-key = "KEY_RIGHTALT"           # evdev key name; KEY_RIGHTCTRL if you use AltGr, KEY_F23 for a Copilot key
+key = "KEY_F23"                # evdev key name; KEY_F23 is the Copilot key, or e.g. KEY_RIGHTALT
 cancel_key = "KEY_ESC"
 
 [audio]
